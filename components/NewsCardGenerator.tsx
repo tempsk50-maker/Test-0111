@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Loader2, Sparkles, Upload, Trash2, RefreshCcw, Settings, Star, Copy, Newspaper, CheckCircle2, Download, ChevronDown, ChevronUp, Image as ImageIcon } from 'lucide-react';
+import { Loader2, Sparkles, Upload, Trash2, RefreshCcw, Settings, Star, Copy, Newspaper, CheckCircle2, Download, ChevronDown, ChevronUp, Image as ImageIcon, X, Smartphone } from 'lucide-react';
 import { NewsCardCanvas } from './NewsCardCanvas';
 import { processNewsText } from '../services/geminiService';
 import { NewsData, CardType, NewsCardTemplate } from '../types';
@@ -89,6 +89,9 @@ const NewsCardGenerator: React.FC<NewsCardGeneratorProps> = ({
   const [isImageTransparent, setIsImageTransparent] = useState(false);
   const [quoteIconIndex, setQuoteIconIndex] = useState(0);
   const [copiedCaption, setCopiedCaption] = useState(false);
+  
+  // Mobile Preview State
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   // Manual Edit Accordion State
   const [isManualEditOpen, setIsManualEditOpen] = useState(true);
@@ -227,8 +230,8 @@ const NewsCardGenerator: React.FC<NewsCardGeneratorProps> = ({
     }
   };
 
-  const handleDownload = async () => {
-    if (!cardRef.current) return;
+  const generateImage = async (): Promise<string | null> => {
+    if (!cardRef.current) return null;
     setIsCapturing(true);
     setShowFlash(true);
     setTimeout(() => setShowFlash(false), 150);
@@ -250,262 +253,330 @@ const NewsCardGenerator: React.FC<NewsCardGeneratorProps> = ({
            }
         }
       });
-
-      const link = document.createElement('a');
-      link.download = `basherkella-${cardType}-${Date.now()}.png`;
-      link.href = canvas.toDataURL('image/png', 1.0);
-      link.click();
+      return canvas.toDataURL('image/png', 1.0);
     } catch (err) {
       console.error("Capture failed:", err);
-      alert("ছবি ডাউনলোড করতে সমস্যা হয়েছে।");
+      return null;
     } finally {
       setIsCapturing(false);
+    }
+  }
+
+  const handleDownload = async () => {
+    const dataUrl = await generateImage();
+    if (!dataUrl) {
+      alert("ছবি ডাউনলোড করতে সমস্যা হয়েছে।");
+      return;
+    }
+
+    const link = document.createElement('a');
+    link.download = `basherkella-${cardType}-${Date.now()}.png`;
+    link.href = dataUrl;
+    link.click();
+  };
+
+  const handleMobileSave = async () => {
+    const dataUrl = await generateImage();
+    if (dataUrl) {
+      setPreviewImage(dataUrl);
+    } else {
+       alert("প্রিভিউ তৈরি করা সম্ভব হয়নি।");
     }
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-      {/* LEFT COLUMN: Controls (Restored Order) */}
-      <div className="lg:col-span-4 space-y-4">
-        
-        {/* 1. Input Section */}
-        <div className="bg-bk-surface-light dark:bg-bk-surface-dark p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-bk-border-dark">
-          <textarea
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            className="w-full h-32 p-4 rounded-xl bg-bk-input-light dark:bg-bk-input-dark border border-gray-200 dark:border-bk-border-dark focus:ring-2 focus:ring-bk-green/20 focus:border-bk-green transition-all resize-none text-slate-800 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500"
-            placeholder="এখানে দীর্ঘ, অগোছালো বা বায়াসড টেক্সট পেস্ট করুন। AI এটি ঠিক করে দিবে..."
-          />
+    <>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* LEFT COLUMN: Controls (Restored Order) */}
+        <div className="lg:col-span-4 space-y-4">
           
-          <div className="mt-4">
-             <button
-                onClick={handleGenerate}
-                disabled={isProcessing || !inputText}
-                className="w-full py-3 bg-bk-green hover:bg-green-700 text-white rounded-xl font-bold shadow-lg shadow-bk-green/20 hover:shadow-bk-green/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-             >
-                {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
-                {isProcessing ? 'তৈরি হচ্ছে...' : 'এনালাইসিস ও তৈরি করুন'}
-             </button>
+          {/* 1. Input Section */}
+          <div className="bg-bk-surface-light dark:bg-bk-surface-dark p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-bk-border-dark">
+            <textarea
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              className="w-full h-32 p-4 rounded-xl bg-bk-input-light dark:bg-bk-input-dark border border-gray-200 dark:border-bk-border-dark focus:ring-2 focus:ring-bk-green/20 focus:border-bk-green transition-all resize-none text-slate-800 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500"
+              placeholder="এখানে দীর্ঘ, অগোছালো বা বায়াসড টেক্সট পেস্ট করুন। AI এটি ঠিক করে দিবে..."
+            />
+            
+            <div className="mt-4">
+               <button
+                  onClick={handleGenerate}
+                  disabled={isProcessing || !inputText}
+                  className="w-full py-3 bg-bk-green hover:bg-green-700 text-white rounded-xl font-bold shadow-lg shadow-bk-green/20 hover:shadow-bk-green/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+               >
+                  {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
+                  {isProcessing ? 'তৈরি হচ্ছে...' : 'এনালাইসিস ও তৈরি করুন'}
+               </button>
+            </div>
           </div>
+
+          {/* 2. Image Upload */}
+          <div className="bg-bk-surface-light dark:bg-bk-surface-dark p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-bk-border-dark">
+               <label className="text-sm font-bold text-gray-300 dark:text-gray-400 mb-3 flex items-center gap-2">
+                   <ImageIcon size={16} /> নিউজ ছবি
+               </label>
+              <div className="bg-bk-input-light dark:bg-bk-input-dark rounded-xl p-3 border border-gray-200 dark:border-bk-border-dark border-dashed">
+                  <div className="flex items-center justify-between">
+                      <div className="text-xs text-gray-500">
+                          {images.length > 0 ? `${images.length}টি ছবি সিলেক্ট করা হয়েছে` : "ছবি আপলোড করুন"}
+                      </div>
+                       <label className="px-3 py-1.5 bg-gray-200 dark:bg-gray-700 hover:bg-bk-green hover:text-white dark:hover:bg-bk-green text-gray-700 dark:text-gray-300 rounded-lg text-xs font-bold cursor-pointer transition-colors">
+                          ব্রাউজ
+                          <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
+                      </label>
+                  </div>
+                  {images.length > 0 && (
+                      <div className="grid grid-cols-4 gap-2 mt-3">
+                           {images.map((img, idx) => (
+                              <div key={idx} className="relative group aspect-square rounded-lg overflow-hidden">
+                                  <img src={img} alt="upload" className="w-full h-full object-cover" />
+                                  <button onClick={() => removeImage(idx)} className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
+                                      <Trash2 size={14} />
+                                  </button>
+                              </div>
+                          ))}
+                      </div>
+                  )}
+              </div>
+          </div>
+
+          {/* 3. Manual Edit (Restored Position) */}
+          <div className="bg-bk-surface-light dark:bg-bk-surface-dark rounded-2xl shadow-sm border border-gray-100 dark:border-bk-border-dark overflow-hidden">
+               <button 
+                  onClick={() => setIsManualEditOpen(!isManualEditOpen)}
+                  className="w-full p-4 flex items-center justify-between text-sm font-bold text-gray-300 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+               >
+                   <span className="flex items-center gap-2"><RefreshCcw size={16}/> ম্যানুয়াল এডিট</span>
+                   {isManualEditOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+               </button>
+               
+               {isManualEditOpen && (
+                   <div className="p-4 pt-0 space-y-3">
+                       <div>
+                           <input 
+                              value={generatedData.headline}
+                              onChange={(e) => setGeneratedData({...generatedData, headline: e.target.value})}
+                              className="w-full bg-bk-input-light dark:bg-bk-input-dark border border-gray-200 dark:border-bk-border-dark rounded-lg px-3 py-2.5 text-sm text-gray-800 dark:text-white focus:border-bk-green outline-none placeholder:text-gray-500"
+                              placeholder="হেডলাইন লিখুন"
+                           />
+                       </div>
+                       <div>
+                           <input 
+                              value={generatedData.body}
+                              onChange={(e) => setGeneratedData({...generatedData, body: e.target.value})}
+                              className="w-full bg-bk-input-light dark:bg-bk-input-dark border border-gray-200 dark:border-bk-border-dark rounded-lg px-3 py-2.5 text-sm text-gray-800 dark:text-white focus:border-bk-green outline-none placeholder:text-gray-500"
+                              placeholder={cardType === 'quote' ? "নাম ও পদবী" : "সাব-হেডলাইন বা বডি"}
+                           />
+                       </div>
+                   </div>
+               )}
+          </div>
+
+          {/* 4. Template Selector (Buttons Style) */}
+          <div className="bg-bk-surface-light dark:bg-bk-surface-dark p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-bk-border-dark">
+               <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto custom-scrollbar">
+                   {templateList.map((t) => (
+                      <button
+                          key={t.id}
+                          onClick={() => setSelectedTemplate(t.id)}
+                          className={`
+                              px-3 py-1.5 rounded-full text-[11px] font-bold transition-all border flex items-center gap-1
+                              ${selectedTemplate === t.id 
+                                  ? 'bg-bk-green text-white border-bk-green shadow-sm' 
+                                  : 'bg-gray-50 dark:bg-bk-input-dark text-gray-600 dark:text-gray-300 border-gray-200 dark:border-bk-border-dark hover:bg-gray-100 dark:hover:bg-white/10'}
+                          `}
+                      >
+                          {defaultTemplate === t.id && <Star size={8} className="fill-current" />}
+                          {t.label}
+                      </button>
+                   ))}
+               </div>
+               <button 
+                    onClick={(e) => handleSetDefaultTemplate(e, selectedTemplate)}
+                    className="mt-3 text-[10px] text-gray-400 hover:text-bk-green flex items-center gap-1 font-bold transition-colors w-full justify-center"
+                  >
+                    <Star size={10} /> বর্তমান টেমপ্লেটটি ডিফল্ট করুন
+               </button>
+          </div>
+
+          {/* 5. Font Selector */}
+          <div className="bg-bk-surface-light dark:bg-bk-surface-dark p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-bk-border-dark relative" ref={fontMenuRef}>
+              <button
+                  onClick={() => setShowFontMenu(!showFontMenu)}
+                  className="w-full flex items-center justify-between px-3 py-2 bg-bk-input-light dark:bg-bk-input-dark border border-gray-200 dark:border-bk-border-dark rounded-lg text-sm font-bold text-gray-700 dark:text-gray-200 hover:border-bk-green transition-colors"
+              >
+                  <span style={{ fontFamily: selectedFont }}>
+                      {FONT_OPTIONS.find(f => f.css === selectedFont)?.name || 'ফন্ট সিলেক্ট করুন'}
+                  </span>
+                  <Settings size={14} className="opacity-50" />
+              </button>
+
+              {showFontMenu && (
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-bk-surface-dark border border-gray-200 dark:border-bk-border-dark rounded-xl shadow-xl z-50 overflow-hidden max-h-60 overflow-y-auto custom-scrollbar p-1">
+                      {FONT_OPTIONS.map((font) => (
+                          <div
+                              key={font.id}
+                              onClick={() => handleFontSelect(font.css)}
+                              className={`
+                                  flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer transition-colors
+                                  ${selectedFont === font.css ? 'bg-bk-green/10 text-bk-green' : 'hover:bg-gray-50 dark:hover:bg-white/5 text-gray-700 dark:text-gray-200'}
+                              `}
+                          >
+                              <span style={{ fontFamily: font.css }} className="text-lg">{font.name}</span>
+                              <div className="flex items-center gap-2">
+                                      {defaultFont === font.css && <Star size={12} className="text-yellow-400 fill-current" />}
+                                      <button 
+                                      onClick={(e) => handleSetDefault(e, font.css)}
+                                      className="p-1 hover:bg-gray-200 dark:hover:bg-white/10 rounded-full text-gray-400 hover:text-bk-green"
+                                      title="Set as Default"
+                                      >
+                                          <Star size={12} />
+                                      </button>
+                              </div>
+                          </div>
+                      ))}
+                  </div>
+              )}
+          </div>
+
+          {/* Quote Specific Toggles */}
+          {cardType === 'quote' && (
+              <div className="bg-bk-surface-light dark:bg-bk-surface-dark p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-bk-border-dark flex items-center gap-2">
+                  <button 
+                      onClick={() => setIsImageTransparent(!isImageTransparent)}
+                      className={`flex-1 py-1.5 px-2 rounded-lg text-[10px] font-bold border transition-all ${isImageTransparent ? 'bg-bk-green/10 border-bk-green text-bk-green' : 'border-gray-200 dark:border-gray-700 text-gray-500'}`}
+                  >
+                      {isImageTransparent ? 'PNG মোড (ব্যাকগ্রাউন্ড নেই)' : 'JPG মোড (সলিড)'}
+                  </button>
+                  <button
+                      onClick={handleCycleQuoteIcon}
+                      className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-bk-green hover:border-bk-green transition-all"
+                      title="আইকন পরিবর্তন করুন"
+                  >
+                      <RefreshCcw size={14} />
+                  </button>
+              </div>
+          )}
         </div>
 
-        {/* 2. Image Upload */}
-        <div className="bg-bk-surface-light dark:bg-bk-surface-dark p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-bk-border-dark">
-             <label className="text-sm font-bold text-gray-300 dark:text-gray-400 mb-3 flex items-center gap-2">
-                 <ImageIcon size={16} /> নিউজ ছবি
-             </label>
-            <div className="bg-bk-input-light dark:bg-bk-input-dark rounded-xl p-3 border border-gray-200 dark:border-bk-border-dark border-dashed">
-                <div className="flex items-center justify-between">
-                    <div className="text-xs text-gray-500">
-                        {images.length > 0 ? `${images.length}টি ছবি সিলেক্ট করা হয়েছে` : "ছবি আপলোড করুন"}
-                    </div>
-                     <label className="px-3 py-1.5 bg-gray-200 dark:bg-gray-700 hover:bg-bk-green hover:text-white dark:hover:bg-bk-green text-gray-700 dark:text-gray-300 rounded-lg text-xs font-bold cursor-pointer transition-colors">
-                        ব্রাউজ
-                        <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
-                    </label>
-                </div>
-                {images.length > 0 && (
-                    <div className="grid grid-cols-4 gap-2 mt-3">
-                         {images.map((img, idx) => (
-                            <div key={idx} className="relative group aspect-square rounded-lg overflow-hidden">
-                                <img src={img} alt="upload" className="w-full h-full object-cover" />
-                                <button onClick={() => removeImage(idx)} className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
-                                    <Trash2 size={14} />
-                                </button>
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </div>
+        {/* RIGHT COLUMN: Preview & Actions */}
+        <div className="lg:col-span-8 flex flex-col gap-6 sticky top-24">
+           
+           {/* Canvas Area */}
+           <div 
+              ref={containerRef}
+              className="w-full bg-gray-200 dark:bg-black/50 rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-700 flex items-center justify-center overflow-hidden relative min-h-[400px]"
+           >
+               <div 
+                  className={`transition-all duration-300 ${isCapturing ? 'scale-100' : ''}`}
+                  style={{ 
+                      transform: isCapturing ? 'none' : `scale(${scale})`, 
+                      transformOrigin: 'center center' 
+                  }}
+               >
+                   <div ref={cardRef} data-card-root>
+                      <NewsCardCanvas 
+                          headline={generatedData.headline}
+                          body={generatedData.body}
+                          images={images}
+                          customLogo={customLogo}
+                          template={selectedTemplate}
+                          selectedFont={selectedFont}
+                          isQuote={cardType === 'quote'}
+                          isImageTransparent={isImageTransparent}
+                          quoteIconIndex={quoteIconIndex}
+                      />
+                   </div>
+               </div>
+               
+               {/* Flash Effect */}
+               {showFlash && <div className="absolute inset-0 bg-white animate-flash pointer-events-none z-50"></div>}
+           </div>
+
+           {/* Action Buttons */}
+           <div className="flex gap-2 sm:gap-4">
+               {/* Desktop/Standard Download */}
+               <button
+                  onClick={handleDownload}
+                  className="flex-1 py-4 bg-slate-900 dark:bg-white dark:text-black text-white rounded-xl font-bold shadow-xl hover:shadow-2xl hover:-translate-y-1 transition-all flex items-center justify-center gap-2 text-sm sm:text-base"
+               >
+                  <Download className="w-5 h-5" />
+                  <span className="hidden sm:inline">ডাউনলোড ইমেজ</span>
+                  <span className="sm:hidden">ডাউনলোড</span>
+               </button>
+
+               {/* Mobile/WebView Friendly Save */}
+               <button
+                  onClick={handleMobileSave}
+                  className="flex-1 py-4 bg-bk-green text-white rounded-xl font-bold shadow-xl hover:shadow-2xl hover:-translate-y-1 transition-all flex items-center justify-center gap-2 text-sm sm:text-base"
+               >
+                  <Smartphone className="w-5 h-5" />
+                  <span className="hidden sm:inline">সেভ (অ্যাপ মোড)</span>
+                  <span className="sm:hidden">সেভ</span>
+               </button>
+           </div>
+
+           {/* Caption Copy */}
+           {generatedData.caption && (
+              <div className="bg-bk-surface-light dark:bg-bk-surface-dark p-5 rounded-2xl border border-gray-100 dark:border-bk-border-dark relative group">
+                  <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button 
+                          onClick={() => {
+                              navigator.clipboard.writeText(generatedData.caption || '');
+                              setCopiedCaption(true);
+                              setTimeout(() => setCopiedCaption(false), 2000);
+                          }}
+                          className="p-2 bg-gray-100 dark:bg-gray-800 rounded-lg text-gray-600 dark:text-gray-300 hover:text-bk-green"
+                      >
+                          {copiedCaption ? <CheckCircle2 size={16} /> : <Copy size={16} />}
+                      </button>
+                  </div>
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">সোশ্যাল মিডিয়া ক্যাপশন</h3>
+                  <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap">
+                      {generatedData.caption}
+                  </p>
+              </div>
+           )}
         </div>
-
-        {/* 3. Manual Edit (Restored Position) */}
-        <div className="bg-bk-surface-light dark:bg-bk-surface-dark rounded-2xl shadow-sm border border-gray-100 dark:border-bk-border-dark overflow-hidden">
-             <button 
-                onClick={() => setIsManualEditOpen(!isManualEditOpen)}
-                className="w-full p-4 flex items-center justify-between text-sm font-bold text-gray-300 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
-             >
-                 <span className="flex items-center gap-2"><RefreshCcw size={16}/> ম্যানুয়াল এডিট</span>
-                 {isManualEditOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-             </button>
-             
-             {isManualEditOpen && (
-                 <div className="p-4 pt-0 space-y-3">
-                     <div>
-                         <input 
-                            value={generatedData.headline}
-                            onChange={(e) => setGeneratedData({...generatedData, headline: e.target.value})}
-                            className="w-full bg-bk-input-light dark:bg-bk-input-dark border border-gray-200 dark:border-bk-border-dark rounded-lg px-3 py-2.5 text-sm text-gray-800 dark:text-white focus:border-bk-green outline-none placeholder:text-gray-500"
-                            placeholder="হেডলাইন লিখুন"
-                         />
-                     </div>
-                     <div>
-                         <input 
-                            value={generatedData.body}
-                            onChange={(e) => setGeneratedData({...generatedData, body: e.target.value})}
-                            className="w-full bg-bk-input-light dark:bg-bk-input-dark border border-gray-200 dark:border-bk-border-dark rounded-lg px-3 py-2.5 text-sm text-gray-800 dark:text-white focus:border-bk-green outline-none placeholder:text-gray-500"
-                            placeholder={cardType === 'quote' ? "নাম ও পদবী" : "সাব-হেডলাইন বা বডি"}
-                         />
-                     </div>
-                 </div>
-             )}
-        </div>
-
-        {/* 4. Template Selector (Buttons Style) */}
-        <div className="bg-bk-surface-light dark:bg-bk-surface-dark p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-bk-border-dark">
-             <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto custom-scrollbar">
-                 {templateList.map((t) => (
-                    <button
-                        key={t.id}
-                        onClick={() => setSelectedTemplate(t.id)}
-                        className={`
-                            px-3 py-1.5 rounded-full text-[11px] font-bold transition-all border flex items-center gap-1
-                            ${selectedTemplate === t.id 
-                                ? 'bg-bk-green text-white border-bk-green shadow-sm' 
-                                : 'bg-gray-50 dark:bg-bk-input-dark text-gray-600 dark:text-gray-300 border-gray-200 dark:border-bk-border-dark hover:bg-gray-100 dark:hover:bg-white/10'}
-                        `}
-                    >
-                        {defaultTemplate === t.id && <Star size={8} className="fill-current" />}
-                        {t.label}
-                    </button>
-                 ))}
-             </div>
-             <button 
-                  onClick={(e) => handleSetDefaultTemplate(e, selectedTemplate)}
-                  className="mt-3 text-[10px] text-gray-400 hover:text-bk-green flex items-center gap-1 font-bold transition-colors w-full justify-center"
-                >
-                  <Star size={10} /> বর্তমান টেমপ্লেটটি ডিফল্ট করুন
-             </button>
-        </div>
-
-        {/* 5. Font Selector */}
-        <div className="bg-bk-surface-light dark:bg-bk-surface-dark p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-bk-border-dark relative" ref={fontMenuRef}>
-            <button
-                onClick={() => setShowFontMenu(!showFontMenu)}
-                className="w-full flex items-center justify-between px-3 py-2 bg-bk-input-light dark:bg-bk-input-dark border border-gray-200 dark:border-bk-border-dark rounded-lg text-sm font-bold text-gray-700 dark:text-gray-200 hover:border-bk-green transition-colors"
-            >
-                <span style={{ fontFamily: selectedFont }}>
-                    {FONT_OPTIONS.find(f => f.css === selectedFont)?.name || 'ফন্ট সিলেক্ট করুন'}
-                </span>
-                <Settings size={14} className="opacity-50" />
-            </button>
-
-            {showFontMenu && (
-                <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-bk-surface-dark border border-gray-200 dark:border-bk-border-dark rounded-xl shadow-xl z-50 overflow-hidden max-h-60 overflow-y-auto custom-scrollbar p-1">
-                    {FONT_OPTIONS.map((font) => (
-                        <div
-                            key={font.id}
-                            onClick={() => handleFontSelect(font.css)}
-                            className={`
-                                flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer transition-colors
-                                ${selectedFont === font.css ? 'bg-bk-green/10 text-bk-green' : 'hover:bg-gray-50 dark:hover:bg-white/5 text-gray-700 dark:text-gray-200'}
-                            `}
-                        >
-                            <span style={{ fontFamily: font.css }} className="text-lg">{font.name}</span>
-                            <div className="flex items-center gap-2">
-                                    {defaultFont === font.css && <Star size={12} className="text-yellow-400 fill-current" />}
-                                    <button 
-                                    onClick={(e) => handleSetDefault(e, font.css)}
-                                    className="p-1 hover:bg-gray-200 dark:hover:bg-white/10 rounded-full text-gray-400 hover:text-bk-green"
-                                    title="Set as Default"
-                                    >
-                                        <Star size={12} />
-                                    </button>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
-        </div>
-
-        {/* Quote Specific Toggles */}
-        {cardType === 'quote' && (
-            <div className="bg-bk-surface-light dark:bg-bk-surface-dark p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-bk-border-dark flex items-center gap-2">
-                <button 
-                    onClick={() => setIsImageTransparent(!isImageTransparent)}
-                    className={`flex-1 py-1.5 px-2 rounded-lg text-[10px] font-bold border transition-all ${isImageTransparent ? 'bg-bk-green/10 border-bk-green text-bk-green' : 'border-gray-200 dark:border-gray-700 text-gray-500'}`}
-                >
-                    {isImageTransparent ? 'PNG মোড (ব্যাকগ্রাউন্ড নেই)' : 'JPG মোড (সলিড)'}
-                </button>
-                <button
-                    onClick={handleCycleQuoteIcon}
-                    className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-bk-green hover:border-bk-green transition-all"
-                    title="আইকন পরিবর্তন করুন"
-                >
-                    <RefreshCcw size={14} />
-                </button>
-            </div>
-        )}
       </div>
 
-      {/* RIGHT COLUMN: Preview & Actions */}
-      <div className="lg:col-span-8 flex flex-col gap-6 sticky top-24">
-         
-         {/* Canvas Area */}
-         <div 
-            ref={containerRef}
-            className="w-full bg-gray-200 dark:bg-black/50 rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-700 flex items-center justify-center overflow-hidden relative min-h-[400px]"
-         >
-             <div 
-                className={`transition-all duration-300 ${isCapturing ? 'scale-100' : ''}`}
-                style={{ 
-                    transform: isCapturing ? 'none' : `scale(${scale})`, 
-                    transformOrigin: 'center center' 
-                }}
-             >
-                 <div ref={cardRef} data-card-root>
-                    <NewsCardCanvas 
-                        headline={generatedData.headline}
-                        body={generatedData.body}
-                        images={images}
-                        customLogo={customLogo}
-                        template={selectedTemplate}
-                        selectedFont={selectedFont}
-                        isQuote={cardType === 'quote'}
-                        isImageTransparent={isImageTransparent}
-                        quoteIconIndex={quoteIconIndex}
-                    />
-                 </div>
+      {/* Full Screen Image Preview Modal for Mobile/WebView */}
+      {previewImage && (
+        <div className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center p-4 animate-in fade-in duration-200">
+           <button 
+             onClick={() => setPreviewImage(null)}
+             className="absolute top-4 right-4 p-2 bg-white/10 rounded-full text-white hover:bg-white/20 transition-colors z-10"
+           >
+             <X size={24} />
+           </button>
+           
+           <div className="text-center mb-6 px-4">
+             <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-bk-green/20 text-bk-green mb-3">
+               <CheckCircle2 size={24} />
              </div>
-             
-             {/* Flash Effect */}
-             {showFlash && <div className="absolute inset-0 bg-white animate-flash pointer-events-none z-50"></div>}
-         </div>
+             <h3 className="text-white font-bold text-lg">কার্ড তৈরি সম্পন্ন হয়েছে!</h3>
+             <p className="text-gray-400 text-sm mt-1">গ্যালারিতে সেভ করতে নিচের ইমেজে ট্যাপ করে ধরে রাখুন (Long Press)।</p>
+           </div>
 
-         {/* Action Buttons */}
-         <div className="flex gap-4">
-             <button
-                onClick={handleDownload}
-                className="flex-1 py-4 bg-slate-900 dark:bg-white dark:text-black text-white rounded-xl font-bold shadow-xl hover:shadow-2xl hover:-translate-y-1 transition-all flex items-center justify-center gap-2"
-             >
-                <Download className="w-5 h-5" />
-                ডাউনলোড ইমেজ
-             </button>
-         </div>
-
-         {/* Caption Copy */}
-         {generatedData.caption && (
-            <div className="bg-bk-surface-light dark:bg-bk-surface-dark p-5 rounded-2xl border border-gray-100 dark:border-bk-border-dark relative group">
-                <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button 
-                        onClick={() => {
-                            navigator.clipboard.writeText(generatedData.caption || '');
-                            setCopiedCaption(true);
-                            setTimeout(() => setCopiedCaption(false), 2000);
-                        }}
-                        className="p-2 bg-gray-100 dark:bg-gray-800 rounded-lg text-gray-600 dark:text-gray-300 hover:text-bk-green"
-                    >
-                        {copiedCaption ? <CheckCircle2 size={16} /> : <Copy size={16} />}
-                    </button>
-                </div>
-                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">সোশ্যাল মিডিয়া ক্যাপশন</h3>
-                <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap">
-                    {generatedData.caption}
-                </p>
-            </div>
-         )}
-      </div>
-    </div>
+           <div className="relative max-w-full max-h-[70vh] overflow-auto rounded-lg shadow-2xl border border-white/10">
+              <img 
+                src={previewImage} 
+                alt="Generated Card" 
+                className="max-w-full h-auto object-contain" 
+                style={{ touchAction: 'none' }} // Hint to browser/webview
+              />
+           </div>
+           
+           <button 
+             onClick={() => setPreviewImage(null)}
+             className="mt-8 px-8 py-3 bg-white text-black font-bold rounded-full hover:bg-gray-200 transition-colors"
+           >
+             বন্ধ করুন
+           </button>
+        </div>
+      )}
+    </>
   );
 };
 
