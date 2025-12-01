@@ -1,0 +1,353 @@
+
+<!DOCTYPE html>
+<html lang="bn" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Basherkella NewsGen App</title>
+    
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@300;400;500;600;700&family=Oswald:wght@500;700&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              bk: {
+                red: '#da291c', green: '#008542', dark: '#1a1a1a',
+                'bg-light': '#eff6f3', 'surface-light': '#ffffff', 'input-light': '#f7f9f8',
+                'bg-dark': '#050a07', 'surface-dark': '#0f1713', 'border-dark': '#1e2e26', 'input-dark': '#0a100d'
+              }
+            },
+            fontFamily: { bengali: ['"Hind Siliguri"', 'sans-serif'], oswald: ['"Oswald"', 'sans-serif'] }
+          }
+        }
+      }
+    </script>
+
+    <!-- Styles for App-like feel -->
+    <style>
+      * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+      body { font-family: 'Hind Siliguri', sans-serif; overscroll-behavior-y: none; user-select: none; -webkit-user-select: none; background-color: #050a07; color: white; }
+      input, textarea, [contenteditable="true"] { user-select: text; -webkit-user-select: text; }
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      @keyframes flash { 0% { opacity: 0.8; } 100% { opacity: 0; } }
+      .animate-flash { animation: flash 0.3s ease-out forwards; }
+    </style>
+
+    <!-- External Libraries (CDN) -->
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <!-- HTML2Canvas -->
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+
+    <!-- Firebase & GenAI Import Map -->
+    <script type="importmap">
+    {
+      "imports": {
+        "firebase/app": "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js",
+        "firebase/auth": "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js",
+        "firebase/firestore": "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js",
+        "@google/genai": "https://esm.run/@google/genai@0.1.1"
+      }
+    }
+    </script>
+</head>
+<body>
+    <div id="root">
+       <!-- Splash Screen -->
+       <div style="display:flex;justify-content:center;align-items:center;height:100vh;background:#050a07;flex-direction:column;gap:1rem;">
+         <div style="width:40px;height:40px;border:4px solid #008542;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
+         <div style="font-weight:bold;color:white;">NEWSGEN APP</div>
+      </div>
+    </div>
+
+    <!-- MAIN APP SCRIPT -->
+    <script type="text/babel" data-type="module">
+        import { initializeApp } from "firebase/app";
+        import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth";
+        import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, query, orderBy, getDoc, setDoc, updateDoc } from "firebase/firestore";
+        import { GoogleGenAI, Type } from "@google/genai";
+
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+          apiKey: "AIzaSyA_psJegYJFM7FNVDANt0o1BodMjn7zFAw",
+          authDomain: "bk-test-7e3db.firebaseapp.com",
+          projectId: "bk-test-7e3db",
+          storageBucket: "bk-test-7e3db.firebasestorage.app",
+          messagingSenderId: "720109531668",
+          appId: "1:720109531668:web:72fba976956fccb84f6d01",
+          measurementId: "G-WVVRDKRTH6"
+        };
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // --- CONTEXT & HOOKS ---
+        const AuthContext = React.createContext({ user: null, userProfile: null, loading: true, isAdmin: false, signInWithGoogle: () => {}, logout: () => {} });
+        const useAuth = () => React.useContext(AuthContext);
+
+        // --- GEMINI SERVICE ---
+        const processText = async (apiKey, text, mode) => {
+            const ai = new GoogleGenAI({ apiKey });
+            let prompt = "";
+            let schema = {};
+            
+            if (mode === 'quote') {
+                prompt = "Extract quote, speaker name and designation in Bengali. Output JSON: {headline, body, caption}";
+                schema = { headline: { type: Type.STRING }, body: { type: Type.STRING }, caption: { type: Type.STRING } };
+            } else {
+                prompt = "Create a catchy Bengali news headline and short body. Output JSON: {headline, body, caption}";
+                schema = { headline: { type: Type.STRING }, body: { type: Type.STRING }, caption: { type: Type.STRING } };
+            }
+
+            try {
+                const response = await ai.models.generateContent({
+                    model: "gemini-2.5-flash",
+                    contents: text + " " + prompt,
+                    config: { responseMimeType: "application/json", responseSchema: { type: Type.OBJECT, properties: schema } }
+                });
+                return JSON.parse(response.text);
+            } catch (e) { console.error(e); throw e; }
+        };
+
+        // --- COMPONENTS ---
+        
+        // 1. TOP BAR
+        const TopBar = ({ activeTab, setActiveTab, onOpenGallery, user, logout }) => {
+            const [menuOpen, setMenuOpen] = React.useState(false);
+            const { Newspaper, Quote, Settings, Menu, X, LogIn, LogOut, Download, FolderOpen } = window.lucide;
+            
+            // Icon component wrapper
+            const Icon = ({ name, ...props }) => {
+                const LucideIcon = window.lucide[name];
+                return LucideIcon ? <LucideIcon {...props} /> : null;
+            };
+
+            return (
+                <div className="sticky top-0 z-50 bg-bk-surface-dark/90 backdrop-blur border-b border-bk-border-dark">
+                    <div className="flex items-center justify-between px-4 h-16">
+                        <div className="flex items-center gap-2">
+                             <div className="w-8 h-8 rounded-full border border-bk-red flex items-center justify-center bg-white">
+                                <div className="w-1 h-5 bg-bk-green mx-[1px]"></div><div className="w-1 h-5 bg-bk-green mx-[1px]"></div>
+                             </div>
+                             <span className="font-bold text-lg text-white">News<span className="text-bk-red">Gen</span></span>
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                            {user ? (
+                                <button onClick={logout} className="p-2 text-bk-red"><Icon name="LogOut" size={20}/></button>
+                            ) : (
+                                <button className="px-3 py-1 bg-bk-green text-white text-xs rounded-full font-bold">লগিন</button>
+                            )}
+                            <button onClick={() => setMenuOpen(!menuOpen)} className="p-2 text-white">
+                                {menuOpen ? <Icon name="X" size={24}/> : <Icon name="Menu" size={24}/>}
+                            </button>
+                        </div>
+                    </div>
+                    
+                    {menuOpen && (
+                        <div className="absolute top-16 right-0 w-64 bg-bk-surface-dark border-l border-bk-border-dark h-screen p-4 shadow-2xl animate-in slide-in-from-right">
+                           <div className="space-y-2">
+                               <button onClick={() => { setActiveTab('news'); setMenuOpen(false); }} className={`w-full text-left p-3 rounded ${activeTab === 'news' ? 'bg-bk-green/20 text-bk-green' : 'text-gray-400'}`}>নিউজ কার্ড</button>
+                               <button onClick={() => { setActiveTab('quote'); setMenuOpen(false); }} className={`w-full text-left p-3 rounded ${activeTab === 'quote' ? 'bg-bk-green/20 text-bk-green' : 'text-gray-400'}`}>উক্তি কার্ড</button>
+                               <button onClick={() => { onOpenGallery(); setMenuOpen(false); }} className="w-full text-left p-3 rounded text-yellow-500 bg-yellow-500/10">ফাইল গ্যালারি</button>
+                           </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // 2. CARD CANVAS (Simplified for Single File)
+        const NewsCardCanvas = React.forwardRef(({ headline, body, image, template }, ref) => {
+            const date = new Date().toLocaleDateString('bn-BD', { day: 'numeric', month: 'long', year: 'numeric' });
+            
+            // Common Brand Header
+            const Brand = ({ color = 'text-bk-green' }) => (
+                <div className="flex items-center gap-2">
+                    <div className="font-oswald font-bold text-2xl tracking-tighter text-bk-green bg-white px-1 border border-bk-green rounded">bk</div>
+                    <div className="flex flex-col">
+                        <span className={`font-bold text-lg leading-none ${color}`}>বাঁশের<span className="text-bk-red">কেল্লা</span></span>
+                        <span className="text-[8px] uppercase tracking-widest opacity-70">News Media</span>
+                    </div>
+                </div>
+            );
+
+            // Template 1: Classic
+            if (template === 'classic') {
+                return (
+                    <div ref={ref} className="w-[600px] h-[600px] bg-white flex flex-col p-6 relative overflow-hidden text-black">
+                        <div className="w-full h-64 bg-gray-200 rounded-lg overflow-hidden mb-4 relative">
+                            {image ? <img src={image} className="w-full h-full object-cover"/> : <div className="flex items-center justify-center h-full text-gray-400">No Image</div>}
+                            <div className="absolute top-0 left-0 bg-bk-red text-white px-3 py-1 text-xs font-bold">ব্রেকিং</div>
+                        </div>
+                        <h1 className="text-3xl font-bold leading-tight mb-3 text-gray-900">{headline || "সংবাদের শিরোনাম এখানে"}</h1>
+                        <p className="text-gray-600 text-sm line-clamp-3">{body}</p>
+                        <div className="mt-auto pt-4 border-t border-gray-100 flex justify-between items-center">
+                            <span className="text-xs text-gray-500 font-bold">{date}</span>
+                            <Brand />
+                        </div>
+                    </div>
+                );
+            }
+
+            // Template 2: Quote (Block Red)
+            if (template === 'quote-red') {
+                return (
+                    <div ref={ref} className="w-[600px] h-[600px] bg-white flex flex-row relative text-black overflow-hidden">
+                        <div className="w-[65%] h-full bg-bk-red p-8 flex flex-col text-white relative">
+                             <div className="text-6xl font-serif opacity-30 absolute top-4 left-4">“</div>
+                             <h1 className="text-3xl font-bold leading-tight mt-8 relative z-10">{headline || "এখানে উক্তিটি প্রদর্শিত হবে..."}</h1>
+                             <div className="mt-auto border-t border-white/20 pt-4"><span className="text-xs font-bold">{date}</span></div>
+                        </div>
+                        <div className="w-[35%] bg-gray-100 flex flex-col items-center py-8">
+                             <Brand color="text-bk-green"/>
+                             <div className="mt-auto text-center px-4">
+                                 <h2 className="font-bold text-xl">{body ? body.split(',')[0] : "নাম"}</h2>
+                                 <p className="text-xs text-gray-500">{body ? body.split(',')[1] : "পদবী"}</p>
+                             </div>
+                             <div className="absolute top-1/2 -right-8 -translate-y-1/2 w-48 h-48 rounded-full border-4 border-white shadow-xl overflow-hidden bg-gray-200 z-20">
+                                 {image && <img src={image} className="w-full h-full object-cover"/>}
+                             </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Default
+            return <div ref={ref} className="w-[600px] h-[600px] bg-white p-10">Select Template</div>
+        });
+
+        // 3. MAIN GENERATOR
+        const Generator = ({ user }) => {
+            const [text, setText] = React.useState('');
+            const [loading, setLoading] = React.useState(false);
+            const [data, setData] = React.useState({ headline: '', body: '', caption: '' });
+            const [image, setImage] = React.useState(null);
+            const [mode, setMode] = React.useState('news'); // news | quote
+            const [template, setTemplate] = React.useState('classic');
+            const [previewUrl, setPreviewUrl] = React.useState(null); // For Long Press Save
+            const cardRef = React.useRef(null);
+            const { Sparkles, Image, Smartphone, X } = window.lucide;
+            const Lucide = (name, props) => { const I = window.lucide[name]; return I ? <I {...props} /> : null; };
+
+            React.useEffect(() => {
+                setTemplate(mode === 'quote' ? 'quote-red' : 'classic');
+            }, [mode]);
+
+            const handleGen = async () => {
+                if (!window.aistudio) { alert("API Key সেট করা নেই"); return; }
+                const key = await window.aistudio.getApiKey(); // Assuming user sets key via a dialog you implement or hardcode for test
+                // For this single file demo, we assume user might need to input key if not env.
+                // Since process.env is missing, let's ask user.
+                const apiKey = prompt("Gemini API Key দিন:");
+                if(!apiKey) return;
+                
+                setLoading(true);
+                try {
+                    const res = await processText(apiKey, text, mode);
+                    setData(res);
+                } catch(e) { alert("Error: " + e.message); }
+                setLoading(false);
+            };
+
+            const handleImage = (e) => {
+                if(e.target.files[0]) setImage(URL.createObjectURL(e.target.files[0]));
+            };
+
+            const handleSaveMobile = async () => {
+                if(!cardRef.current) return;
+                const canvas = await window.html2canvas(cardRef.current, { scale: 2, useCORS: true });
+                setPreviewUrl(canvas.toDataURL("image/png"));
+            };
+
+            return (
+                <div className="grid lg:grid-cols-2 gap-6 p-4 max-w-6xl mx-auto">
+                    <div className="space-y-4">
+                        <div className="bg-bk-surface-dark border border-bk-border-dark p-4 rounded-xl">
+                            <div className="flex gap-2 mb-4">
+                                <button onClick={() => setMode('news')} className={`flex-1 py-2 rounded font-bold text-sm ${mode==='news'?'bg-bk-green text-white':'bg-white/5 text-gray-400'}`}>নিউজ কার্ড</button>
+                                <button onClick={() => setMode('quote')} className={`flex-1 py-2 rounded font-bold text-sm ${mode==='quote'?'bg-bk-green text-white':'bg-white/5 text-gray-400'}`}>উক্তি কার্ড</button>
+                            </div>
+                            <textarea value={text} onChange={e=>setText(e.target.value)} placeholder="নিউজ বা উক্তি লিখুন..." className="w-full h-32 bg-bk-input-dark border border-bk-border-dark rounded p-3 text-white mb-3 focus:border-bk-green outline-none"></textarea>
+                            <button onClick={handleGen} disabled={loading} className="w-full py-3 bg-bk-green text-white font-bold rounded flex items-center justify-center gap-2">
+                                {loading ? "কাজ চলছে..." : <><Lucide name="Sparkles" size={16}/> জেনারেট করুন</>}
+                            </button>
+                        </div>
+
+                        <div className="bg-bk-surface-dark border border-bk-border-dark p-4 rounded-xl">
+                            <label className="flex items-center gap-2 text-gray-400 bg-bk-input-dark p-3 rounded cursor-pointer">
+                                <Lucide name="Image" size={20}/> ছবি আপলোড করুন
+                                <input type="file" onChange={handleImage} className="hidden" accept="image/*"/>
+                            </label>
+                            
+                            <div className="mt-4 space-y-2">
+                                <input value={data.headline} onChange={e=>setData({...data, headline:e.target.value})} className="w-full bg-bk-input-dark border border-bk-border-dark rounded p-2 text-sm text-white" placeholder="হেডলাইন"/>
+                                <input value={data.body} onChange={e=>setData({...data, body:e.target.value})} className="w-full bg-bk-input-dark border border-bk-border-dark rounded p-2 text-sm text-white" placeholder="বডি টেক্সট"/>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="space-y-4">
+                        <div className="w-full bg-gray-800 rounded-xl overflow-hidden flex items-center justify-center p-4 border border-white/10 relative min-h-[400px]">
+                            <div style={{transform: 'scale(0.6)', transformOrigin: 'center'}}>
+                                <NewsCardCanvas ref={cardRef} headline={data.headline} body={data.body} image={image} template={template} />
+                            </div>
+                        </div>
+                        <button onClick={handleSaveMobile} className="w-full py-3 bg-white/10 text-white font-bold rounded flex items-center justify-center gap-2 border border-white/10">
+                            <Lucide name="Smartphone" size={16}/> সেভ (মোবাইল মোড)
+                        </button>
+                        {data.caption && <div className="p-4 bg-bk-surface-dark rounded border border-bk-border-dark text-sm text-gray-300">{data.caption}</div>}
+                    </div>
+
+                    {previewUrl && (
+                        <div className="fixed inset-0 z-50 bg-black/95 flex flex-col items-center justify-center p-4 animate-in fade-in">
+                            <div className="absolute top-4 right-4"><button onClick={()=>setPreviewUrl(null)} className="p-2 bg-white/20 rounded-full text-white"><Lucide name="X"/></button></div>
+                            <img src={previewUrl} className="max-w-full max-h-[80vh] object-contain rounded mb-4"/>
+                            <div className="bg-bk-green text-white px-6 py-2 rounded-full text-xs font-bold animate-bounce">ছবিতে ট্যাপ করে ধরে সেভ করুন</div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // --- APP ROOT ---
+        const App = () => {
+            const [user, setUser] = React.useState(null);
+            
+            // Dummy Auth for Sketchware Demo
+            React.useEffect(() => {
+                const unsub = onAuthStateChanged(auth, u => setUser(u));
+                return () => unsub();
+            }, []);
+
+            return (
+                <div className="min-h-screen pb-10">
+                    <TopBar user={user} logout={()=>signOut(auth)} activeTab="news" setActiveTab={()=>{}} onOpenGallery={()=>{}} />
+                    <Generator user={user} />
+                </div>
+            );
+        };
+
+        // RENDER
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
+    
